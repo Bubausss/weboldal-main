@@ -3,6 +3,9 @@
 -- Cloud Config & Auth rendszerhez
 -- ============================================================
 
+CREATE DATABASE IF NOT EXISTS `anely_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE `anely_db`;
+
 -- 1. USERS tábla (Felhasználók alapadatai)
 -- ============================================================
 

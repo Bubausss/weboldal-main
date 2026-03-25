@@ -8,15 +8,15 @@
  */
 
 // ============== KONFIGURÁCIÓ ==============
-// Load from environment variables — NEVER hardcode keys in source!
-define('AES_KEY', getenv('ANELY_AES_KEY') ?: die('ERR: ANELY_AES_KEY not set'));
-define('AES_IV',  getenv('ANELY_AES_IV')  ?: die('ERR: ANELY_AES_IV not set'));
+// Használhatsz környezeti változókat (.env), vagy ha nincsenek, a beégetett alapértelmezéseket használja az azonnali kompatibilitásért
+define('AES_KEY', getenv('ANELY_AES_KEY') ?: 'hvNssrRzUsy4YPnULNSD0d86R5qweNF3'); // 32 byte - Ugyanaz mint a C Kernel driverben!
+define('AES_IV',  getenv('ANELY_AES_IV')  ?: 'x5YDW5e8JVX5Hngo');                // 16 byte
 
-// Adatbázis kapcsolat from environment
+// Adatbázis kapcsolat
 define('DB_HOST', getenv('ANELY_DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('ANELY_DB_NAME') ?: 'anely_db');
-define('DB_USER', getenv('ANELY_DB_USER') ?: die('ERR: ANELY_DB_USER not set'));
-define('DB_PASS', getenv('ANELY_DB_PASS') ?: die('ERR: ANELY_DB_PASS not set'));
+define('DB_NAME', getenv('ANELY_DB_NAME') ?: 'anely_db'); // Cseréld erre a MySQL adatbázisod nevét
+define('DB_USER', getenv('ANELY_DB_USER') ?: 'buba');
+define('DB_PASS', getenv('ANELY_DB_PASS') ?: 'Jelszo123!');
 
 // ============== TITKOSÍTÁSI FÜGGVÉNYEK ==============
 
