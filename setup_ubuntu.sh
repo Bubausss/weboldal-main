@@ -50,6 +50,9 @@ python3 -m venv venv
 source venv/bin/activate
 # Ha van requirements.txt telepítjük, ha nincs, rápakoljuk az alapvető csomagokat
 if [ -f "requirements.txt" ]; then
+    # Remove broken package that causes installation to fail
+    grep -v "emergentintegrations" requirements.txt > requirements_clean.txt
+    mv requirements_clean.txt requirements.txt
     pip install -r requirements.txt
 else
     pip install fastapi uvicorn motor pymongo passlib[bcrypt] pyjwt python-dotenv pydantic
@@ -79,7 +82,7 @@ server {
         proxy_pass http://127.0.0.1:8000/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_addrs;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 
     # PHP (Fallback for specific scripts like fetch_config.php, optional)
@@ -96,7 +99,7 @@ systemctl restart nginx
 # 5. React Admin Panel Frontend építése (Build)
 echo "⚛️ [4/6] React Frontend NPM telepítése és buildelése (Ez eltarthat pár percig)..."
 cd frontend
-npm install
+npm install --legacy-peer-deps
 npm run build
 cd ..
 echo "✔️ React Frontend Build kész!"
@@ -124,7 +127,7 @@ echo "✔️ Web mappák beállítva ($WEB_ROOT)!"
 echo "⚙️ [6/6] Háttérfolyamatok konfigurálása (PM2)..."
 npm install -g pm2
 cd backend
-pm2 start "venv/bin/uvicorn server:app --host 0.0.0.0 --port 8000" --name "anely-backend"
+pm2 start venv/bin/uvicorn --name "anely-backend" -- server:app --host 0.0.0.0 --port 8000
 pm2 save
 pm2 startup | grep "sudo pm2" | bash
 cd ..
