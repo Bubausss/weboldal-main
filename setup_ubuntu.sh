@@ -89,7 +89,7 @@ echo "✔️ Web mappák beállítva ($WEB_ROOT)!"
 echo "⚙️ [6/6] Háttérfolyamatok konfigurálása (PM2)..."
 npm install -g pm2
 cd backend
-pm2 start "venv/bin/uvicorn server:app --host 0.0.0.0 --port 8000" --name "anely-backend"
+pm2 start "venv/bin/uvicorn server:app --host 0.0.0.0 --port 80" --name "anely-backend"
 pm2 save
 pm2 startup | grep "sudo pm2" | bash
 cd ..
@@ -99,7 +99,7 @@ echo "✅ TELEPÍTÉS SIKERESEN BEFEJEZŐDÖTT!"
 echo "============================================================"
 echo "Amik futnak:"
 echo "- 🐘 MySQL fut (Adatbázis: anely_db, User: buba)"
-echo "- 🐍 Python API fut a háttérben (Port: 8000)"
+echo "- 🐍 Python API fut a háttérben (Port: 80)"
 echo "- ⚛️ React UI és PHP készen áll a fájlrendszerben (/var/www/anely)."
 echo ""
 echo "Következő lépésed:"
