@@ -18,6 +18,13 @@ fi
 
 echo "🚀 [Anely Setup] Telepítés megkezdése..."
 
+# Biztosítjuk, hogy az Apache ne akadályozza az Nginx-et a 80-as porton
+echo "🛑 [0/6] Apache2 leállítása (ha telepítve van), hogy ne ütközzön az Nginx-el..."
+systemctl stop apache2 2>/dev/null
+systemctl disable apache2 2>/dev/null
+apt-get remove -y apache2 apache2-utils apache2-bin apache2.2-common 2>/dev/null
+apt-get autoremove -y
+
 # 1. Rendszer frissítése és alapvető csomagok telepítése
 echo "📦 [1/6] Rendszer frissítése és csomagok letöltése (Nginx, MySQL, PHP, Python, Node.js)..."
 apt-get update -y
