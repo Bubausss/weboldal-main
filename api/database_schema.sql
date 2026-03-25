@@ -1,21 +1,28 @@
 -- ============================================================
--- Anely Driver - SQL Tábla Módosítások
--- Cloud Config rendszerhez
+-- Anely Driver - Teljes SQL Adatbázis Séma
+-- Cloud Config & Auth rendszerhez
 -- ============================================================
 
--- 1. USERS tábla módosítás (Auth és hwid mezők hozzáadása)
+-- 1. USERS tábla (Felhasználók alapadatai)
 -- ============================================================
 
-ALTER TABLE `users` 
-ADD COLUMN `username` VARCHAR(64) NOT NULL AFTER `id`,
-ADD COLUMN `password_hash` VARCHAR(255) NOT NULL AFTER `email`,
-ADD COLUMN `hwid` VARCHAR(64) NULL DEFAULT NULL AFTER `password_hash`,
-ADD COLUMN `subscription_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `hwid`,
-ADD COLUMN `subscription_end` DATETIME NULL DEFAULT NULL AFTER `subscription_active`,
-ADD UNIQUE INDEX `idx_username` (`username`),
-ADD UNIQUE INDEX `idx_hwid` (`hwid`);
+CREATE TABLE IF NOT EXISTS `users` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `username` VARCHAR(64) NOT NULL,
+    `email` VARCHAR(255) NOT NULL,
+    `password_hash` VARCHAR(255) NOT NULL,
+    `hwid` VARCHAR(64) NULL DEFAULT NULL,
+    `subscription_active` TINYINT(1) NOT NULL DEFAULT 1,
+    `subscription_end` DATETIME NULL DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `is_admin` TINYINT(1) NOT NULL DEFAULT 0,
+    `is_banned` TINYINT(1) NOT NULL DEFAULT 0,
+    UNIQUE INDEX `idx_username` (`username`),
+    UNIQUE INDEX `idx_email` (`email`),
+    UNIQUE INDEX `idx_hwid` (`hwid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 1/B. INVITE_KEYS tábla (Admin generált regisztrációs kódok)
+-- 2. INVITE_KEYS tábla (Admin generált regisztrációs kódok)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS `invite_keys` (
@@ -31,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `invite_keys` (
     FOREIGN KEY (`used_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 2. USER_CONFIGS tábla (ha még nem létezik)
+-- 3. USER_CONFIGS tábla (Felhasználónkénti Cloud Cheat Config)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS `user_configs` (
@@ -80,54 +87,9 @@ CREATE TABLE IF NOT EXISTS `user_configs` (
     UNIQUE INDEX `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 3. Ha a user_configs tábla már létezik, csak mezők hozzáadása
+-- 4. Teszt Adat / Alapértelmezett Admin Fiók (Fejlesztéshez)
 -- ============================================================
 
--- ESP mezők
-ALTER TABLE `user_configs` 
-ADD COLUMN IF NOT EXISTS `esp_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `esp_color` VARCHAR(7) NOT NULL DEFAULT '#FF0000',
-ADD COLUMN IF NOT EXISTS `esp_sound` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `esp_sound_color` VARCHAR(7) NOT NULL DEFAULT '#FFFF00',
-ADD COLUMN IF NOT EXISTS `esp_head_circle` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `esp_snap_line` TINYINT(1) NOT NULL DEFAULT 0;
+-- INSERT INTO `users` (`username`, `email`, `password_hash`, `is_admin`, `subscription_active`, `subscription_end`) 
+-- VALUES ('Admin', 'admin@anely.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 1, DATE_ADD(NOW(), INTERVAL 365 DAY));
 
--- RCS mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `rcs_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `rcs_strength` INT NOT NULL DEFAULT 50;
-
--- Triggerbot mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `triggerbot_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `triggerbot_delay` INT NOT NULL DEFAULT 100,
-ADD COLUMN IF NOT EXISTS `triggerbot_key` VARCHAR(16) NOT NULL DEFAULT 'MOUSE4';
-
--- Radar mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `radar_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `radar_color` VARCHAR(7) NOT NULL DEFAULT '#00FF00';
-
--- Grenade Prediction mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `grenade_prediction_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `grenade_prediction_color` VARCHAR(7) NOT NULL DEFAULT '#FF8800';
-
--- Bomb Timer mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `bomb_timer_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `bomb_timer_color` VARCHAR(7) NOT NULL DEFAULT '#FF0000';
-
--- Spectator List mezők
-ALTER TABLE `user_configs`
-ADD COLUMN IF NOT EXISTS `spectator_list_enabled` TINYINT(1) NOT NULL DEFAULT 0,
-ADD COLUMN IF NOT EXISTS `spectator_list_color` VARCHAR(7) NOT NULL DEFAULT '#FFFFFF';
-
--- 4. Teszt adat beszúrása (opcionális)
--- ============================================================
-
--- INSERT INTO `users` (`email`, `hwid`, `subscription_active`, `subscription_end`) 
--- VALUES ('test@anely.com', 'HWID-1234-5678-ABCD', 1, DATE_ADD(NOW(), INTERVAL 30 DAY));
-
--- INSERT INTO `user_configs` (`user_id`, `esp_enabled`, `esp_color`, `rcs_enabled`, `rcs_strength`) 
--- VALUES (LAST_INSERT_ID(), 1, '#FF0000', 1, 75);
