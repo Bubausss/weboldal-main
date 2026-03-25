@@ -1,0 +1,130 @@
+{
+  "identity": {
+    "name": "Ghost-driver",
+    "aesthetic": "Industrial Stealth x Dark Angelcore",
+    "vibe": "Haunting, Precision, Void, Elite, Ethereal",
+    "principles": [
+      "No rounded corners > 4px. Sharpness = Precision.",
+      "Black is not a color, it's a canvas. Use texture within black.",
+      "Text is data. Data must be legible (Monospace).",
+      "Headers are scripture. They must be elegant (Serif).",
+      "Motion should feel like smoke or glitches, not bounces."
+    ]
+  },
+  "typography": {
+    "primary_font": "JetBrains Mono",
+    "secondary_font": "Cinzel",
+    "instructions": "Install fonts: `npm install @fontsource/cinzel @fontsource/jetbrains-mono`. Import in index.js.",
+    "scale": {
+      "h1": "font-serif text-4xl md:text-6xl tracking-tighter font-bold uppercase",
+      "h2": "font-serif text-2xl md:text-3xl tracking-tight text-white/90",
+      "h3": "font-mono text-xl uppercase tracking-widest text-white/70",
+      "body": "font-mono text-sm leading-relaxed text-white/60",
+      "label": "font-mono text-xs uppercase tracking-[0.2em] text-white/40",
+      "code": "font-mono text-xs bg-white/5 p-1 rounded-sm text-green-400"
+    }
+  },
+  "colors": {
+    "palette": {
+      "background": "#000000",
+      "surface": "#050505",
+      "surface_highlight": "#0A0A0A",
+      "border": "#1A1A1A",
+      "border_active": "#333333",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#888888",
+      "accent_success": "#22C55E", 
+      "accent_danger": "#EF4444",
+      "accent_ethereal": "#E0D9E9"
+    },
+    "gradients": {
+      "ethereal_glow": "radial-gradient(circle at center, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 70%)",
+      "scanline": "linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.02) 50%, rgba(255,255,255,0))"
+    },
+    "utility_classes": {
+      "bg_void": "bg-black",
+      "bg_glass": "bg-black/40 backdrop-blur-md border border-white/10",
+      "text_glow": "drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]"
+    }
+  },
+  "layout": {
+    "grid_system": "Bento Grid (refer to MODE B in system prompt)",
+    "spacing": "Generous. Use p-6 or p-8 for cards. gap-6 for grid.",
+    "sidebar": "Fixed left, w-64, bg-black border-r border-white/5. Hidden on mobile (sheet).",
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+  },
+  "components": {
+    "Card": {
+      "style": "bg-black/40 backdrop-blur-xl border border-white/10 hover:border-white/20 transition-all duration-500",
+      "radius": "rounded-sm"
+    },
+    "Button": {
+      "primary": "bg-white text-black font-mono uppercase tracking-widest hover:bg-gray-200 rounded-sm h-10 px-8 transition-all hover:scale-[1.02] active:scale-[0.98]",
+      "ghost": "bg-transparent border border-white/20 text-white font-mono uppercase tracking-widest hover:bg-white/5 rounded-sm h-10 px-8",
+      "danger": "bg-red-900/20 border border-red-500/50 text-red-500 hover:bg-red-900/40 hover:text-red-400 font-mono uppercase tracking-widest"
+    },
+    "Input": {
+      "style": "bg-black border border-white/20 focus:border-white/50 text-white font-mono placeholder:text-white/20 rounded-sm h-11 transition-all focus:ring-1 focus:ring-white/20"
+    },
+    "StatusBadge": {
+      "active": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/30 text-green-400 border border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)]",
+      "inactive": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-900/30 text-red-400 border border-red-500/20"
+    }
+  },
+  "assets": {
+    "background_textures": [
+      "https://images.unsplash.com/photo-1766394609400-0e7b1548cd30?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "https://images.unsplash.com/photo-1770217535687-693e1cfb2f8e?crop=entropy&cs=srgb&fm=jpg&q=85"
+    ],
+    "usage": "Use background textures with 'mix-blend-screen' and very low opacity (10-20%) on the main body background to create the 'ethereal smoke' effect."
+  },
+  "visual_enhancers": {
+    "noise": "Add a fixed noise overlay with opacity-5 pointer-events-none z-50.",
+    "scanlines": "Optional CRT scanline effect on specific 'Terminal' sections.",
+    "glitch": "Use subtle CSS clip-path glitches on hover for the main logo."
+  },
+  "feature_specific_guidelines": {
+    "login_page": {
+      "vibe": "Ritualistic Entry. The invite key is the 'spell'.",
+      "layout": "Centered card on a smoky background. Input field should be large, letter-spaced.",
+      "elements": ["Invite Key Input (Masked)", "Login Button", "Request Invite Link (small, understated)"]
+    },
+    "dashboard": {
+      "vibe": "Cockpit of a Ghost Machine.",
+      "widgets": [
+        "Status: Online/Offline (Green/Red glowing dot)",
+        "Subscription: Days Remaining (Progress bar thin)",
+        "Live Feed: Scrolling text log of activities"
+      ]
+    },
+    "config_page": {
+      "vibe": "Switchboard.",
+      "elements": "Toggles should look like physical switches or check-boxes with glowing ticks. Sliders needs to be thin lines with a solid square thumb."
+    },
+    "admin_panel": {
+      "vibe": "Judgement Hall.",
+      "elements": "Table with distinct rows. Actions (Ban/Approve) should be icon-only or minimal text buttons. Killswitch must be red, isolated, and require confirmation."
+    }
+  },
+  "tech_stack_instructions": {
+    "libraries_to_add": [
+      "framer-motion",
+      "clsx",
+      "tailwind-merge",
+      "@fontsource/cinzel",
+      "@fontsource/jetbrains-mono"
+    ],
+    "setup_steps": [
+      "Install dependencies: `npm install framer-motion @fontsource/cinzel @fontsource/jetbrains-mono`",
+      "Import fonts in `src/index.js` or `src/App.js`",
+      "Update `tailwind.config.js` to include font families."
+    ]
+  },
+  "universal_guidelines": [
+    "Always use `data-testid` for interactive elements.",
+    "Ensure 100% Mobile Responsiveness. Stack grids to col-1 on mobile.",
+    "Do not use gradients for backgrounds, only for subtle glows or borders.",
+    "Keep animations smooth (0.3s - 0.5s ease-out).",
+    "Use `sonner` for all notifications (toast)."
+  ]
+}
