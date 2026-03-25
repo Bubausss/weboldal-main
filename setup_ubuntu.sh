@@ -57,7 +57,43 @@ fi
 cd ..
 echo "✔️ Python dependencies kész!"
 
-# 4. React Admin Panel Frontend építése (Build)
+# Setup Nginx Reverse Proxy Config
+echo "🌐 [4/6] Nginx szerver konfiguráció beállítása (Reverse Proxy)..."
+
+cat > /etc/nginx/sites-available/default << 'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    
+    root /var/www/anely;
+    index index.html index.php;
+
+    # React Frontend
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Python Backend API Proxy
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_addrs;
+    }
+
+    # PHP (Fallback for specific scripts like fetch_config.php, optional)
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php-fpm.sock;
+    }
+}
+EOF
+
+# Restart Nginx
+systemctl restart nginx
+
+# 5. React Admin Panel Frontend építése (Build)
 echo "⚛️ [4/6] React Frontend NPM telepítése és buildelése (Ez eltarthat pár percig)..."
 cd frontend
 npm install
@@ -65,8 +101,7 @@ npm run build
 cd ..
 echo "✔️ React Frontend Build kész!"
 
-# 5. Fájlok másolása és webszerver beállítása
-echo "🌐 [5/6] Nginx Webszerver beállítása (Könyvtárak másolása)..."
+echo "🌐 [5/6] Weboldal fájlok másolása..."
 
 WEB_ROOT="/var/www/anely"
 rm -rf $WEB_ROOT
@@ -89,7 +124,7 @@ echo "✔️ Web mappák beállítva ($WEB_ROOT)!"
 echo "⚙️ [6/6] Háttérfolyamatok konfigurálása (PM2)..."
 npm install -g pm2
 cd backend
-pm2 start "venv/bin/uvicorn server:app --host 0.0.0.0 --port 80" --name "anely-backend"
+pm2 start "venv/bin/uvicorn server:app --host 0.0.0.0 --port 8000" --name "anely-backend"
 pm2 save
 pm2 startup | grep "sudo pm2" | bash
 cd ..
@@ -99,8 +134,8 @@ echo "✅ TELEPÍTÉS SIKERESEN BEFEJEZŐDÖTT!"
 echo "============================================================"
 echo "Amik futnak:"
 echo "- 🐘 MySQL fut (Adatbázis: anely_db, User: buba)"
-echo "- 🐍 Python API fut a háttérben (Port: 80)"
-echo "- ⚛️ React UI és PHP készen áll a fájlrendszerben (/var/www/anely)."
+echo "- 🐍 Python API fut a háttérben (Port: 8000)"
+echo "- ⚛️ Nginx Reverse Proxy fut (Port: 80), továbbítja a /api/ kéréseket a Pythonnak!"
 echo ""
 echo "Következő lépésed:"
 echo "Csak mutasd rá az Nginx/Apache szerver konfigurációdat a '/var/www/anely' mappára!"

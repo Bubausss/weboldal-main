@@ -25,11 +25,11 @@ define('DB_PASS', getenv('ANELY_DB_PASS') ?: 'Jelszo123!');
  * A driver BCRYPT AES ECB módból építi fel a CTR-t, így itt is CTR-t kell használni.
  */
 function encrypt_response($data) {
-    // Generate a fixed 16-byte IV that matches the start counter in the driver logic
-    // or pass the IV alongside the data. Here we assume AES_IV is 16 bytes.
+    // AES-256-CBC matches the BCRYPT_CHAIN_MODE_CBC in the C kernel driver
+    // and correctly applies PKCS#7 block padding.
     $encrypted = openssl_encrypt(
         $data,
-        'AES-256-CTR',
+        'AES-256-CBC',
         AES_KEY,
         OPENSSL_RAW_DATA,
         AES_IV
@@ -178,10 +178,13 @@ $encrypted = encrypt_response($compactConfig);
 
 // DNS TXT limit ellenőrzés (255 byte)
 if (strlen($encrypted) > 255) {
-    // Ha túl hosszú, rövidebb formátum
+    // Ha túl hosszú, rövidebb formátum - az indexeket szigorúan meg kell tartani a driver parser miatt!
     $shortConfig = implode('|', [
         'OK',
         $config['esp_enabled'] ? '1' : '0',
+        '0', // index 2: esp_sound
+        '0', // index 3: esp_head_circle
+        '0', // index 4: esp_snap_line
         $config['rcs_enabled'] ? '1' : '0',
         $config['rcs_strength'],
         $config['triggerbot_enabled'] ? '1' : '0',
