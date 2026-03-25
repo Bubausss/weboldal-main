@@ -3,14 +3,33 @@
 -- Cloud Config rendszerhez
 -- ============================================================
 
--- 1. USERS tábla módosítás (HWID és subscription mezők hozzáadása)
+-- 1. USERS tábla módosítás (Auth és hwid mezők hozzáadása)
 -- ============================================================
 
 ALTER TABLE `users` 
-ADD COLUMN `hwid` VARCHAR(64) NULL DEFAULT NULL AFTER `email`,
+ADD COLUMN `username` VARCHAR(64) NOT NULL AFTER `id`,
+ADD COLUMN `password_hash` VARCHAR(255) NOT NULL AFTER `email`,
+ADD COLUMN `hwid` VARCHAR(64) NULL DEFAULT NULL AFTER `password_hash`,
 ADD COLUMN `subscription_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `hwid`,
 ADD COLUMN `subscription_end` DATETIME NULL DEFAULT NULL AFTER `subscription_active`,
+ADD UNIQUE INDEX `idx_username` (`username`),
 ADD UNIQUE INDEX `idx_hwid` (`hwid`);
+
+-- 1/B. INVITE_KEYS tábla (Admin generált regisztrációs kódok)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `invite_keys` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `key_string` VARCHAR(64) NOT NULL,
+    `created_by` INT NULL,          -- Admin ID aki generálta
+    `used` TINYINT(1) NOT NULL DEFAULT 0,
+    `used_by_user_id` INT NULL,     -- User ID aki elhasználta
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `used_at` DATETIME NULL DEFAULT NULL,
+    UNIQUE INDEX `idx_key` (`key_string`),
+    FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`used_by_user_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 2. USER_CONFIGS tábla (ha még nem létezik)
 -- ============================================================
