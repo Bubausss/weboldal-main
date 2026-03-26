@@ -158,7 +158,7 @@ echo "✔️ Nginx Webszerver elindítva!"
 echo "⚙️ [6/6] Háttérfolyamatok konfigurálása (PM2)..."
 npm install -g pm2
 cd backend
-pm2 start venv/bin/uvicorn --name "anely-backend" -- server:app --host 0.0.0.0 --port 8000
+pm2 start venv/bin/python --name "anely-backend" -- -m uvicorn server:app --host 0.0.0.0 --port 8000
 pm2 save
 pm2 startup | grep "sudo pm2" | bash
 cd ..
