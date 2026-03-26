@@ -117,10 +117,11 @@ server {
 EOF
 
 # 5. React Admin Panel Frontend építése (Build)
-echo "⚛️ [4/6] React Frontend NPM telepítése és buildelése (Ez eltarthat pár percig)..."
+echo "⚛️ [4/6] React Frontend NPM/YARN telepítése és buildelése (Ez eltarthat pár percig)..."
 cd frontend
-npm install --legacy-peer-deps
-npm run build
+npm install -g yarn
+yarn install
+yarn build
 cd ..
 echo "✔️ React Frontend Build kész!"
 
@@ -131,8 +132,14 @@ rm -rf $WEB_ROOT
 mkdir -p $WEB_ROOT
 mkdir -p $WEB_ROOT/api
 
-# Frontend bemásolása
-cp -r frontend/build/* $WEB_ROOT/
+# Ellenőrizzük, hogy sikeres volt-e a build, nehogy 403-as errort kapjon a felhasználó
+if [ -d "frontend/build" ] && [ "$(ls -A frontend/build)" ]; then
+    # Frontend bemásolása
+    cp -r frontend/build/* $WEB_ROOT/
+else
+    echo "❌ FATAL ERROR: A React build sikertelen volt (frontend/build üres)! Nincs mit kiszolgálni."
+    exit 1
+fi
 
 # PHP API bemásolása
 cp api/fetch_config.php $WEB_ROOT/api/
