@@ -116,9 +116,6 @@ server {
 }
 EOF
 
-# Restart Nginx
-systemctl restart nginx
-
 # 5. React Admin Panel Frontend építése (Build)
 echo "⚛️ [4/6] React Frontend NPM telepítése és buildelése (Ez eltarthat pár percig)..."
 cd frontend
@@ -146,6 +143,10 @@ chmod -R 755 $WEB_ROOT
 
 echo "✔️ Web mappák beállítva ($WEB_ROOT)!"
 
+# Nginx újraindítása (most már léteznek a mappák)
+systemctl restart nginx
+echo "✔️ Nginx Webszerver elindítva!"
+
 # 6. PM2 telepítése a Pyton Backend folyamatos futtatásához a háttérben
 echo "⚙️ [6/6] Háttérfolyamatok konfigurálása (PM2)..."
 npm install -g pm2
@@ -163,7 +164,5 @@ echo "- 🐘 MySQL fut (Adatbázis: anely_db, User: buba)"
 echo "- 🐍 Python API fut a háttérben (Port: 8000)"
 echo "- ⚛️ Nginx Reverse Proxy fut (Port: 80), továbbítja a /api/ kéréseket a Pythonnak!"
 echo ""
-echo "Következő lépésed:"
-echo "Csak mutasd rá az Nginx/Apache szerver konfigurációdat a '/var/www/anely' mappára!"
-echo "Ne felejtsd el elindítani az nginx-et: sudo systemctl restart nginx"
+echo "A weboldalad már elérhető az IP címeden vagy domaineden!"
 echo "============================================================"
