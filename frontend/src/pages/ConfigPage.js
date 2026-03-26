@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../componen
 import { toast } from 'sonner';
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = (process.env.REACT_APP_BACKEND_URL || "") + "/api";
 
 const KEYBIND_OPTIONS = [
   'MOUSE4', 'MOUSE5', 'SHIFT', 'CTRL', 'ALT', 'CAPSLOCK'

@@ -7,7 +7,7 @@ import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = (process.env.REACT_APP_BACKEND_URL || "") + "/api";
 
 const CommunityPage = () => {
   const { getToken } = useAuth();
