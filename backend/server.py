@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from databases import Database
 import os
 import logging
 from pathlib import Path
@@ -14,14 +14,20 @@ import string
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 import jwt
+import base64
+import hashlib
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MySQL DB Connection
+DB_USER = os.environ.get('DB_USER', 'buba')
+DB_PASS = os.environ.get('DB_PASS', 'Jelszo123!')
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+DB_NAME = os.environ.get('DB_NAME', 'anely_db')
+
+DATABASE_URL = f"mysql+aiomysql://{DB_USER}:{DB_PASS}@{DB_HOST}:3306/{DB_NAME}"
+database = Database(DATABASE_URL)
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ghost-driver-secret-key-change-in-production')
@@ -81,41 +87,28 @@ class InviteRequestResponse(BaseModel):
     id: str
     email: str
     reason: str
-    status: str  # pending, approved, rejected
+    status: str
     invite_key: Optional[str] = None
     created_at: str
 
 class UserConfigCreate(BaseModel):
-    # ESP Settings
     esp_enabled: bool = False
     esp_color: str = "#FF0000"
     esp_sound: bool = False
     esp_sound_color: str = "#FFFF00"
     esp_head_circle: bool = False
     esp_snap_line: bool = False
-    
-    # RCS Settings
     rcs_enabled: bool = False
     rcs_strength: int = 50
-    
-    # Triggerbot Settings
     triggerbot_enabled: bool = False
     triggerbot_delay: int = 100
     triggerbot_key: str = "MOUSE4"
-    
-    # Radar Settings
     radar_enabled: bool = False
     radar_color: str = "#00FF00"
-    
-    # Grenade Prediction Settings
     grenade_prediction_enabled: bool = False
-    grenade_prediction_color: str = "#FF8800"
-    
-    # Bomb Timer Settings
+    grenade_prediction_color: "#FF8800"
     bomb_timer_enabled: bool = False
     bomb_timer_color: str = "#FF0000"
-    
-    # Spectator List Settings
     spectator_list_enabled: bool = False
     spectator_list_color: str = "#FFFFFF"
 
@@ -123,40 +116,25 @@ class UserConfigResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     user_id: str
-    
-    # ESP Settings
     esp_enabled: bool
     esp_color: str = "#FF0000"
     esp_sound: bool = False
     esp_sound_color: str = "#FFFF00"
     esp_head_circle: bool = False
     esp_snap_line: bool = False
-    
-    # RCS Settings
     rcs_enabled: bool
     rcs_strength: int = 50
-    
-    # Triggerbot Settings
     triggerbot_enabled: bool
     triggerbot_delay: int = 100
     triggerbot_key: str = "MOUSE4"
-    
-    # Radar Settings
     radar_enabled: bool = False
     radar_color: str = "#00FF00"
-    
-    # Grenade Prediction Settings
     grenade_prediction_enabled: bool = False
     grenade_prediction_color: str = "#FF8800"
-    
-    # Bomb Timer Settings
     bomb_timer_enabled: bool = False
     bomb_timer_color: str = "#FF0000"
-    
-    # Spectator List Settings
     spectator_list_enabled: bool = False
     spectator_list_color: str = "#FFFFFF"
-    
     updated_at: str
 
 class SystemStatus(BaseModel):
@@ -180,13 +158,12 @@ class SuggestionResponse(BaseModel):
     user_id: str
     user_email: str
     message: str
-    status: str = "new"  # new, reviewed, implemented
+    status: str
     created_at: str
 
 # ============== HELPER FUNCTIONS ==============
 
 def generate_invite_key():
-    """Generate a key in format ANELY-XXXX-XXXX"""
     chars = string.ascii_uppercase + string.digits
     part1 = ''.join(secrets.choice(chars) for _ in range(4))
     part2 = ''.join(secrets.choice(chars) for _ in range(4))
@@ -198,10 +175,10 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-def create_token(user_id: str, is_admin: bool) -> str:
+def create_token(user_id: int, is_admin: bool) -> str:
     expiration = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "is_admin": is_admin,
         "exp": expiration
     }
@@ -210,19 +187,35 @@ def create_token(user_id: str, is_admin: bool) -> str:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("sub")
-        if user_id is None:
+        user_id_str = payload.get("sub")
+        if not user_id_str:
             raise HTTPException(status_code=401, detail="Invalid token")
         
-        user = await db.users.find_one({"id": user_id}, {"_id": 0})
-        if user is None:
+        user_id = int(user_id_str)
+        user = await database.fetch_one("SELECT * FROM users WHERE id = :id", {"id": user_id})
+        if not user:
             raise HTTPException(status_code=401, detail="User not found")
-        if user.get("is_banned", False):
+        if user["is_banned"]:
             raise HTTPException(status_code=403, detail="User is banned")
-        return user
+        
+        # Calculate sub days
+        sub_days = 0
+        if user["subscription_end"] and user["subscription_active"]:
+            delta = user["subscription_end"].replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)
+            sub_days = max(0, delta.days)
+
+        return {
+            "id": str(user["id"]),
+            "email": user["email"],
+            "is_admin": bool(user["is_admin"]),
+            "subscription_days": sub_days,
+            "subscription_end": user["subscription_end"].isoformat() if user["subscription_end"] else None,
+            "is_banned": bool(user["is_banned"]),
+            "created_at": user["created_at"].isoformat() if user["created_at"] else ""
+        }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
+    except (jwt.InvalidTokenError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_admin_user(current_user: dict = Depends(get_current_user)):
@@ -234,102 +227,75 @@ async def get_admin_user(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/auth/register", response_model=dict)
 async def register(user_data: UserCreate):
-    # Check if email already exists
-    existing = await db.users.find_one({"email": user_data.email})
+    existing = await database.fetch_one("SELECT id FROM users WHERE email = :email", {"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    # Check invite key
-    invite = await db.invite_keys.find_one({"key": user_data.invite_key, "used": False})
-    if not invite:
+    invite = await database.fetch_one("SELECT id, used FROM invite_keys WHERE key_string = :key", {"key": user_data.invite_key})
+    if not invite or invite["used"]:
         raise HTTPException(status_code=400, detail="Invalid or already used invite key")
     
-    # Check if this is the admin key
-    is_admin = user_data.invite_key.startswith("ADMIN-")
+    is_admin = 1 if user_data.invite_key.startswith("ADMIN-") else 0
+    username = user_data.email.split("@")[0]
     
     # Create user
-    user_id = str(uuid.uuid4())
-    subscription_end = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
-    
-    user_doc = {
-        "id": user_id,
+    query = """
+    INSERT INTO users (username, email, password_hash, is_admin, subscription_active, subscription_end)
+    VALUES (:username, :email, :password_hash, :is_admin, 1, DATE_ADD(NOW(), INTERVAL 30 DAY))
+    """
+    values = {
+        "username": username,
         "email": user_data.email,
         "password_hash": hash_password(user_data.password),
-        "is_admin": is_admin,
-        "subscription_days": 30,
-        "subscription_end": subscription_end,
-        "is_banned": False,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "is_admin": is_admin
     }
+    user_id = await database.execute(query, values)
     
-    await db.users.insert_one(user_doc)
-    
-    # Mark invite key as used
-    await db.invite_keys.update_one(
-        {"key": user_data.invite_key},
-        {"$set": {"used": True, "used_by": user_id}}
-    )
+    # Mark invite key used
+    await database.execute("UPDATE invite_keys SET used = 1, used_by_user_id = :uid, used_at = NOW() WHERE id = :id", {"uid": user_id, "id": invite["id"]})
     
     # Create default config
-    config_doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "esp_enabled": False,
-        "esp_color": "#FF0000",
-        "esp_sound": False,
-        "esp_sound_color": "#FFFF00",
-        "esp_head_circle": False,
-        "esp_snap_line": False,
-        "rcs_enabled": False,
-        "rcs_strength": 50,
-        "triggerbot_enabled": False,
-        "triggerbot_delay": 100,
-        "triggerbot_key": "MOUSE4",
-        "radar_enabled": False,
-        "radar_color": "#00FF00",
-        "grenade_prediction_enabled": False,
-        "grenade_prediction_color": "#FF8800",
-        "bomb_timer_enabled": False,
-        "bomb_timer_color": "#FF0000",
-        "spectator_list_enabled": False,
-        "spectator_list_color": "#FFFFFF",
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.user_configs.insert_one(config_doc)
+    cfg_query = """
+    INSERT INTO user_configs (user_id) VALUES (:user_id)
+    """
+    await database.execute(cfg_query, {"user_id": user_id})
     
-    token = create_token(user_id, is_admin)
-    
+    token = create_token(user_id, bool(is_admin))
     return {
         "token": token,
         "user": {
-            "id": user_id,
+            "id": str(user_id),
             "email": user_data.email,
-            "is_admin": is_admin,
+            "is_admin": bool(is_admin),
             "subscription_days": 30
         }
     }
 
 @api_router.post("/auth/login", response_model=dict)
 async def login(user_data: UserLogin):
-    user = await db.users.find_one({"email": user_data.email}, {"_id": 0})
+    user = await database.fetch_one("SELECT * FROM users WHERE email = :email", {"email": user_data.email})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if not verify_password(user_data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    if user.get("is_banned", False):
+    if user["is_banned"]:
         raise HTTPException(status_code=403, detail="User is banned")
     
-    token = create_token(user["id"], user.get("is_admin", False))
+    sub_days = 0
+    if user["subscription_end"] and user["subscription_active"]:
+        delta = user["subscription_end"].replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)
+        sub_days = max(0, delta.days)
     
+    token = create_token(user["id"], bool(user["is_admin"]))
     return {
         "token": token,
         "user": {
-            "id": user["id"],
+            "id": str(user["id"]),
             "email": user["email"],
-            "is_admin": user.get("is_admin", False),
-            "subscription_days": user.get("subscription_days", 0)
+            "is_admin": bool(user["is_admin"]),
+            "subscription_days": sub_days
         }
     }
 
@@ -337,80 +303,72 @@ async def login(user_data: UserLogin):
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(**current_user)
 
-# ============== INVITE REQUEST ROUTES (Public) ==============
+# ============== INVITE REQUEST ROUTES ==============
 
 @api_router.post("/invite-requests", response_model=InviteRequestResponse)
 async def create_invite_request(request: InviteRequestCreate):
-    # Check if email already has a pending request
-    existing = await db.invite_requests.find_one({"email": request.email, "status": "pending"})
+    existing = await database.fetch_one("SELECT id FROM invite_requests WHERE email = :email AND status = 'pending'", {"email": request.email})
     if existing:
         raise HTTPException(status_code=400, detail="You already have a pending invite request")
     
-    # Check if email is already registered
-    existing_user = await db.users.find_one({"email": request.email})
+    existing_user = await database.fetch_one("SELECT id FROM users WHERE email = :email", {"email": request.email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email is already registered")
     
-    request_id = str(uuid.uuid4())
-    doc = {
-        "id": request_id,
-        "email": request.email,
-        "reason": request.reason,
-        "status": "pending",
-        "invite_key": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
+    query = "INSERT INTO invite_requests (email, reason, status) VALUES (:email, :reason, 'pending')"
+    req_id = await database.execute(query, {"email": request.email, "reason": request.reason})
     
-    await db.invite_requests.insert_one(doc)
-    return InviteRequestResponse(**doc)
+    return InviteRequestResponse(
+        id=str(req_id),
+        email=request.email,
+        reason=request.reason,
+        status="pending",
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
 
 # ============== SUGGESTION ROUTES ==============
 
 @api_router.post("/suggestions", response_model=SuggestionResponse)
 async def create_suggestion(suggestion: SuggestionCreate, current_user: dict = Depends(get_current_user)):
-    suggestion_id = str(uuid.uuid4())
-    doc = {
-        "id": suggestion_id,
-        "user_id": current_user["id"],
-        "user_email": current_user["email"],
-        "message": suggestion.message,
-        "status": "new",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
+    query = "INSERT INTO suggestions (user_id, user_email, message, status) VALUES (:uid, :email, :msg, 'new')"
+    sug_id = await database.execute(query, {"uid": int(current_user["id"]), "email": current_user["email"], "msg": suggestion.message})
     
-    await db.suggestions.insert_one(doc)
-    return SuggestionResponse(**doc)
+    return SuggestionResponse(
+        id=str(sug_id),
+        user_id=current_user["id"],
+        user_email=current_user["email"],
+        message=suggestion.message,
+        status="new",
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
 
 @api_router.get("/admin/suggestions", response_model=dict)
-async def get_suggestions(
-    admin: dict = Depends(get_admin_user),
-    skip: int = 0,
-    limit: int = 50
-):
+async def get_suggestions(admin: dict = Depends(get_admin_user), skip: int = 0, limit: int = 50):
     limit = min(limit, 100)
-    total = await db.suggestions.count_documents({})
-    suggestions = await db.suggestions.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {
-        "suggestions": [SuggestionResponse(**s) for s in suggestions],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    total = await database.fetch_val("SELECT COUNT(*) FROM suggestions")
+    rows = await database.fetch_all("SELECT * FROM suggestions ORDER BY created_at DESC LIMIT :limit OFFSET :skip", {"limit": limit, "skip": skip})
+    
+    suggestions = [{
+        "id": str(r["id"]),
+        "user_id": str(r["user_id"]),
+        "user_email": r["user_email"],
+        "message": r["message"],
+        "status": r["status"],
+        "created_at": r["created_at"].isoformat() if r["created_at"] else ""
+    } for r in rows]
+    return {"suggestions": suggestions, "total": total, "skip": skip, "limit": limit}
 
 @api_router.post("/admin/suggestions/{suggestion_id}/review")
 async def mark_suggestion_reviewed(suggestion_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.suggestions.update_one(
-        {"id": suggestion_id},
-        {"$set": {"status": "reviewed"}}
-    )
-    if result.matched_count == 0:
+    result = await database.execute("UPDATE suggestions SET status = 'reviewed' WHERE id = :id", {"id": int(suggestion_id)})
+    if not result:
         raise HTTPException(status_code=404, detail="Suggestion not found")
     return {"message": "Suggestion marked as reviewed"}
 
 @api_router.delete("/admin/suggestions/{suggestion_id}")
 async def delete_suggestion(suggestion_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.suggestions.delete_one({"id": suggestion_id})
-    if result.deleted_count == 0:
+    result = await database.execute("DELETE FROM suggestions WHERE id = :id", {"id": int(suggestion_id)})
+    if not result:
         raise HTTPException(status_code=404, detail="Suggestion not found")
     return {"message": "Suggestion deleted"}
 
@@ -418,347 +376,209 @@ async def delete_suggestion(suggestion_id: str, admin: dict = Depends(get_admin_
 
 @api_router.get("/config", response_model=UserConfigResponse)
 async def get_config(current_user: dict = Depends(get_current_user)):
-    config = await db.user_configs.find_one({"user_id": current_user["id"]}, {"_id": 0})
+    user_id = int(current_user["id"])
+    config = await database.fetch_one("SELECT * FROM user_configs WHERE user_id = :uid", {"uid": user_id})
     if not config:
-        # Create default config
-        config = {
-            "id": str(uuid.uuid4()),
-            "user_id": current_user["id"],
-            "esp_enabled": False,
-            "esp_color": "#FF0000",
-            "esp_sound": False,
-            "esp_sound_color": "#FFFF00",
-            "esp_head_circle": False,
-            "esp_snap_line": False,
-            "rcs_enabled": False,
-            "rcs_strength": 50,
-            "triggerbot_enabled": False,
-            "triggerbot_delay": 100,
-            "triggerbot_key": "MOUSE4",
-            "radar_enabled": False,
-            "radar_color": "#00FF00",
-            "grenade_prediction_enabled": False,
-            "grenade_prediction_color": "#FF8800",
-            "bomb_timer_enabled": False,
-            "bomb_timer_color": "#FF0000",
-            "spectator_list_enabled": False,
-            "spectator_list_color": "#FFFFFF",
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.user_configs.insert_one(config)
-    return UserConfigResponse(**config)
+        await database.execute("INSERT INTO user_configs (user_id) VALUES (:uid)", {"uid": user_id})
+        config = await database.fetch_one("SELECT * FROM user_configs WHERE user_id = :uid", {"uid": user_id})
+    
+    return UserConfigResponse(
+        id=str(config["id"]),
+        user_id=str(config["user_id"]),
+        esp_enabled=bool(config["esp_enabled"]),
+        esp_color=config["esp_color"],
+        esp_sound=bool(config["esp_sound"]),
+        esp_sound_color=config["esp_sound_color"],
+        esp_head_circle=bool(config["esp_head_circle"]),
+        esp_snap_line=bool(config["esp_snap_line"]),
+        rcs_enabled=bool(config["rcs_enabled"]),
+        rcs_strength=config["rcs_strength"],
+        triggerbot_enabled=bool(config["triggerbot_enabled"]),
+        triggerbot_delay=config["triggerbot_delay"],
+        triggerbot_key=config["triggerbot_key"],
+        radar_enabled=bool(config["radar_enabled"]),
+        radar_color=config["radar_color"],
+        grenade_prediction_enabled=bool(config["grenade_prediction_enabled"]),
+        grenade_prediction_color=config["grenade_prediction_color"],
+        bomb_timer_enabled=bool(config["bomb_timer_enabled"]),
+        bomb_timer_color=config["bomb_timer_color"],
+        spectator_list_enabled=bool(config["spectator_list_enabled"]),
+        spectator_list_color=config["spectator_list_color"],
+        updated_at=config["updated_at"].isoformat() if config["updated_at"] else ""
+    )
 
 @api_router.put("/config", response_model=UserConfigResponse)
 async def update_config(config_data: UserConfigCreate, current_user: dict = Depends(get_current_user)):
-    update_doc = config_data.model_dump()
-    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    user_id = int(current_user["id"])
+    data = config_data.model_dump()
+    data["uid"] = user_id
     
-    result = await db.user_configs.find_one_and_update(
-        {"user_id": current_user["id"]},
-        {"$set": update_doc},
-        return_document=True
-    )
-    
-    if not result:
-        # Create new config
-        config_id = str(uuid.uuid4())
-        update_doc["id"] = config_id
-        update_doc["user_id"] = current_user["id"]
-        await db.user_configs.insert_one(update_doc)
-        result = update_doc
-    
-    # Remove _id for response
-    if "_id" in result:
-        del result["_id"]
-    
-    return UserConfigResponse(**result)
+    query = """
+    UPDATE user_configs SET
+        esp_enabled = :esp_enabled, esp_color = :esp_color, esp_sound = :esp_sound, esp_sound_color = :esp_sound_color,
+        esp_head_circle = :esp_head_circle, esp_snap_line = :esp_snap_line,
+        rcs_enabled = :rcs_enabled, rcs_strength = :rcs_strength,
+        triggerbot_enabled = :triggerbot_enabled, triggerbot_delay = :triggerbot_delay, triggerbot_key = :triggerbot_key,
+        radar_enabled = :radar_enabled, radar_color = :radar_color,
+        grenade_prediction_enabled = :grenade_prediction_enabled, grenade_prediction_color = :grenade_prediction_color,
+        bomb_timer_enabled = :bomb_timer_enabled, bomb_timer_color = :bomb_timer_color,
+        spectator_list_enabled = :spectator_list_enabled, spectator_list_color = :spectator_list_color
+    WHERE user_id = :uid
+    """
+    await database.execute(query, data)
+    return await get_config(current_user)
 
 # ============== DASHBOARD ROUTES ==============
 
 @api_router.get("/dashboard/status", response_model=SystemStatus)
 async def get_system_status(current_user: dict = Depends(get_current_user)):
-    # Check killswitch
-    killswitch = await db.system_settings.find_one({"key": "killswitch"}, {"_id": 0})
-    is_active = killswitch.get("active", False) if killswitch else False
-    
-    status = "OFFLINE - KILLSWITCH ACTIVE" if is_active else "Undetected"
-    
-    return SystemStatus(
-        driver_status=status,
-        last_update="2 hours ago",
-        killswitch_active=is_active
-    )
+    killswitch = await database.fetch_one("SELECT active FROM system_settings WHERE setting_key = 'killswitch'")
+    is_active = bool(killswitch["active"]) if killswitch else False
+    status_str = "OFFLINE - KILLSWITCH ACTIVE" if is_active else "Undetected"
+    return SystemStatus(driver_status=status_str, killswitch_active=is_active)
 
 @api_router.get("/dashboard/stats", response_model=LiveStats)
 async def get_live_stats(current_user: dict = Depends(get_current_user)):
-    # Count active (non-banned) users
-    active_count = await db.users.count_documents({"is_banned": False})
-    
-    return LiveStats(
-        active_users=active_count,
-        server_connectivity="Online"
-    )
+    active_count = await database.fetch_val("SELECT COUNT(*) FROM users WHERE is_banned = 0")
+    return LiveStats(active_users=active_count, server_connectivity="Online")
 
 # ============== ADMIN ROUTES ==============
 
 @api_router.get("/admin/users", response_model=dict)
-async def get_all_users(
-    admin: dict = Depends(get_admin_user),
-    skip: int = 0,
-    limit: int = 50
-):
-    limit = min(limit, 100)  # Max 100 per page
-    total = await db.users.count_documents({})
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).skip(skip).limit(limit).to_list(limit)
-    return {
-        "users": [UserResponse(**u) for u in users],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+async def get_all_users(admin: dict = Depends(get_admin_user), skip: int = 0, limit: int = 50):
+    limit = min(limit, 100)
+    total = await database.fetch_val("SELECT COUNT(*) FROM users")
+    rows = await database.fetch_all("SELECT * FROM users LIMIT :limit OFFSET :skip", {"limit": limit, "skip": skip})
+    
+    users = []
+    for r in rows:
+        sub_days = 0
+        if r["subscription_end"] and r["subscription_active"]:
+            delta = r["subscription_end"].replace(tzinfo=timezone.utc) - datetime.now(timezone.utc)
+            sub_days = max(0, delta.days)
+        
+        users.append({
+            "id": str(r["id"]),
+            "email": r["email"],
+            "is_admin": bool(r["is_admin"]),
+            "subscription_days": sub_days,
+            "subscription_end": r["subscription_end"].isoformat() if r["subscription_end"] else None,
+            "is_banned": bool(r["is_banned"]),
+            "created_at": r["created_at"].isoformat() if r["created_at"] else ""
+        })
+    return {"users": users, "total": total, "skip": skip, "limit": limit}
 
 @api_router.post("/admin/users/{user_id}/ban")
 async def ban_user(user_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"is_banned": True}}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
+    res = await database.execute("UPDATE users SET is_banned = 1 WHERE id = :id", {"id": int(user_id)})
+    if not res: raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User banned successfully"}
 
 @api_router.post("/admin/users/{user_id}/unban")
 async def unban_user(user_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"is_banned": False}}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
+    res = await database.execute("UPDATE users SET is_banned = 0 WHERE id = :id", {"id": int(user_id)})
+    if not res: raise HTTPException(status_code=404, detail="User not found")
     return {"message": "User unbanned successfully"}
 
 @api_router.post("/admin/users/{user_id}/extend")
 async def extend_subscription(user_id: str, data: ExtendSubscription, admin: dict = Depends(get_admin_user)):
-    user = await db.users.find_one({"id": user_id}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await database.fetch_one("SELECT subscription_end FROM users WHERE id = :id", {"id": int(user_id)})
+    if not user: raise HTTPException(status_code=404, detail="User not found")
     
-    current_end = datetime.fromisoformat(user.get("subscription_end", datetime.now(timezone.utc).isoformat()))
+    current_end = user["subscription_end"] if user["subscription_end"] else datetime.now(timezone.utc)
+    current_end = current_end.replace(tzinfo=timezone.utc)
     if current_end < datetime.now(timezone.utc):
         current_end = datetime.now(timezone.utc)
     
     new_end = current_end + timedelta(days=data.days)
-    new_days = user.get("subscription_days", 0) + data.days
-    
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"subscription_end": new_end.isoformat(), "subscription_days": new_days}}
-    )
-    
+    await database.execute("UPDATE users SET subscription_end = :end, subscription_active = 1 WHERE id = :id", {"end": new_end, "id": int(user_id)})
     return {"message": f"Subscription extended by {data.days} days"}
 
 @api_router.get("/admin/invite-requests", response_model=dict)
-async def get_invite_requests(
-    admin: dict = Depends(get_admin_user),
-    skip: int = 0,
-    limit: int = 50
-):
+async def get_invite_requests(admin: dict = Depends(get_admin_user), skip: int = 0, limit: int = 50):
     limit = min(limit, 100)
-    total = await db.invite_requests.count_documents({})
-    requests = await db.invite_requests.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {
-        "requests": [InviteRequestResponse(**r) for r in requests],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    total = await database.fetch_val("SELECT COUNT(*) FROM invite_requests")
+    rows = await database.fetch_all("SELECT * FROM invite_requests ORDER BY created_at DESC LIMIT :limit OFFSET :skip", {"limit": limit, "skip": skip})
+    
+    reqs = [{
+        "id": str(r["id"]),
+        "email": r["email"],
+        "reason": r["reason"],
+        "status": r["status"],
+        "invite_key": r["invite_key"],
+        "created_at": r["created_at"].isoformat() if r["created_at"] else ""
+    } for r in rows]
+    return {"requests": reqs, "total": total, "skip": skip, "limit": limit}
 
 @api_router.post("/admin/invite-requests/{request_id}/approve")
 async def approve_invite_request(request_id: str, admin: dict = Depends(get_admin_user)):
-    request = await db.invite_requests.find_one({"id": request_id}, {"_id": 0})
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
+    req = await database.fetch_one("SELECT * FROM invite_requests WHERE id = :id", {"id": int(request_id)})
+    if not req: raise HTTPException(status_code=404, detail="Request not found")
+    if req["status"] != "pending": raise HTTPException(status_code=400, detail="Request already processed")
     
-    if request["status"] != "pending":
-        raise HTTPException(status_code=400, detail="Request already processed")
-    
-    # Generate invite key
-    invite_key = generate_invite_key()
-    
-    # Create invite key in DB
-    invite_doc = {
-        "id": str(uuid.uuid4()),
-        "key": invite_key,
-        "created_by": admin["id"],
-        "used": False,
-        "used_by": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.invite_keys.insert_one(invite_doc)
-    
-    # Update request
-    await db.invite_requests.update_one(
-        {"id": request_id},
-        {"$set": {"status": "approved", "invite_key": invite_key}}
-    )
-    
-    return {"message": "Request approved", "invite_key": invite_key}
+    invoke_key = generate_invite_key()
+    await database.execute("INSERT INTO invite_keys (key_string, created_by) VALUES (:key, :admin_id)", {"key": invoke_key, "admin_id": int(admin["id"])})
+    await database.execute("UPDATE invite_requests SET status = 'approved', invite_key = :key WHERE id = :id", {"key": invoke_key, "id": int(request_id)})
+    return {"message": "Request approved", "invite_key": invoke_key}
 
 @api_router.post("/admin/invite-requests/{request_id}/reject")
 async def reject_invite_request(request_id: str, admin: dict = Depends(get_admin_user)):
-    result = await db.invite_requests.update_one(
-        {"id": request_id, "status": "pending"},
-        {"$set": {"status": "rejected"}}
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Request not found or already processed")
+    res = await database.execute("UPDATE invite_requests SET status = 'rejected' WHERE id = :id AND status = 'pending'", {"id": int(request_id)})
+    if not res: raise HTTPException(status_code=404, detail="Request not found or processed")
     return {"message": "Request rejected"}
 
 @api_router.get("/admin/invite-keys", response_model=dict)
-async def get_invite_keys(
-    admin: dict = Depends(get_admin_user),
-    skip: int = 0,
-    limit: int = 50
-):
+async def get_invite_keys(admin: dict = Depends(get_admin_user), skip: int = 0, limit: int = 50):
     limit = min(limit, 100)
-    total = await db.invite_keys.count_documents({})
-    keys = await db.invite_keys.find({}, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {
-        "keys": [InviteKeyResponse(**k) for k in keys],
-        "total": total,
-        "skip": skip,
-        "limit": limit
-    }
+    total = await database.fetch_val("SELECT COUNT(*) FROM invite_keys")
+    rows = await database.fetch_all("SELECT * FROM invite_keys ORDER BY created_at DESC LIMIT :limit OFFSET :skip", {"limit": limit, "skip": skip})
+    
+    keys = [{
+        "id": str(r["id"]),
+        "key": r["key_string"],
+        "created_by": str(r["created_by"]) if r["created_by"] else "system",
+        "used": bool(r["used"]),
+        "used_by": str(r["used_by_user_id"]) if r["used_by_user_id"] else None,
+        "created_at": r["created_at"].isoformat() if r["created_at"] else ""
+    } for r in rows]
+    return {"keys": keys, "total": total, "skip": skip, "limit": limit}
 
 @api_router.post("/admin/invite-keys/generate", response_model=InviteKeyResponse)
 async def generate_new_invite_key(admin: dict = Depends(get_admin_user)):
     invite_key = generate_invite_key()
-    
-    doc = {
-        "id": str(uuid.uuid4()),
-        "key": invite_key,
-        "created_by": admin["id"],
-        "used": False,
-        "used_by": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db.invite_keys.insert_one(doc)
-    return InviteKeyResponse(**doc)
+    key_id = await database.execute("INSERT INTO invite_keys (key_string, created_by) VALUES (:key, :uid)", {"key": invite_key, "uid": int(admin["id"])})
+    return InviteKeyResponse(
+        id=str(key_id),
+        key=invite_key,
+        created_by=admin["id"],
+        used=False,
+        used_by=None,
+        created_at=datetime.now(timezone.utc).isoformat()
+    )
 
 @api_router.post("/admin/killswitch/activate")
 async def activate_killswitch(admin: dict = Depends(get_admin_user)):
-    await db.system_settings.update_one(
-        {"key": "killswitch"},
-        {"$set": {"active": True, "activated_by": admin["id"], "activated_at": datetime.now(timezone.utc).isoformat()}},
-        upsert=True
-    )
+    query = """
+    INSERT INTO system_settings (setting_key, active, activated_by, activated_at) 
+    VALUES ('killswitch', 1, :uid, NOW()) 
+    ON DUPLICATE KEY UPDATE active = 1, activated_by = :uid, activated_at = NOW()
+    """
+    await database.execute(query, {"uid": int(admin["id"])})
     return {"message": "KILLSWITCH ACTIVATED - All drivers stopped"}
 
 @api_router.post("/admin/killswitch/deactivate")
 async def deactivate_killswitch(admin: dict = Depends(get_admin_user)):
-    await db.system_settings.update_one(
-        {"key": "killswitch"},
-        {"$set": {"active": False}},
-        upsert=True
-    )
+    query = """
+    INSERT INTO system_settings (setting_key, active) 
+    VALUES ('killswitch', 0) 
+    ON DUPLICATE KEY UPDATE active = 0
+    """
+    await database.execute(query, {})
     return {"message": "Killswitch deactivated"}
 
-@api_router.get("/admin/killswitch/status")
-async def get_killswitch_status(admin: dict = Depends(get_admin_user)):
-    killswitch = await db.system_settings.find_one({"key": "killswitch"}, {"_id": 0})
-    return {"active": killswitch.get("active", False) if killswitch else False}
-
-# ============== SETUP ROUTES ==============
-
-@api_router.post("/setup/init-admin")
+@api_router.get("/setup/init-admin")
 async def initialize_admin_key():
-    """Create initial admin invite key if none exists"""
-    existing = await db.invite_keys.find_one({"key": {"$regex": "^ADMIN-"}})
-    if existing:
-        return {"message": "Admin key already exists", "key": existing["key"]}
-    
-    # Generate admin key
-    chars = string.ascii_uppercase + string.digits
-    part1 = ''.join(secrets.choice(chars) for _ in range(4))
-    part2 = ''.join(secrets.choice(chars) for _ in range(4))
-    admin_key = f"ADMIN-{part1}-{part2}"
-    
-    doc = {
-        "id": str(uuid.uuid4()),
-        "key": admin_key,
-        "created_by": "system",
-        "used": False,
-        "used_by": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    
-    await db.invite_keys.insert_one(doc)
-    logger.info(f"Admin key created: {admin_key}")
-    
-    return {"message": "Admin key created", "key": admin_key}
-
-# ============== DNS CONFIG ENDPOINT ==============
-# Serves encrypted compact config for DNS TXT queries
-# Format: OK|ESP|SOUND|HEAD|SNAP|RCS|RCS_STR|TRIG|TRIG_DLY|TRIG_KEY|...
-
-import base64
-import hashlib
-
-@api_router.get("/dns-config")
-async def get_dns_config(hwid: str = ""):
-    """Serve encrypted compact config by HWID for DNS TXT tunnel queries"""
-    if not hwid or len(hwid) < 8:
-        return {"error": "ERR_NO_HWID"}
-    
-    # Find user by HWID hash (first 16 chars match)
-    # In production, users table should have a hwid field
-    # For now, try to match by searching configs
-    users = await db.users.find({}, {"_id": 0}).to_list(100)
-    
-    matched_user = None
-    for user in users:
-        # Generate HWID hash from user ID for matching
-        user_hwid_hash = hashlib.sha256(user["id"].encode()).hexdigest()[:16]
-        if hwid.startswith(user_hwid_hash):
-            matched_user = user
-            break
-    
-    if not matched_user:
-        return {"encrypted": base64.b64encode(b"ERR_AUTH").decode()}
-    
-    # Check subscription
-    if matched_user.get("is_banned", False):
-        return {"encrypted": base64.b64encode(b"ERR_BANNED").decode()}
-    
-    # Get user config
-    config = await db.user_configs.find_one(
-        {"user_id": matched_user["id"]}, {"_id": 0}
-    )
-    if not config:
-        config = {}
-    
-    # Build compact config string (matches fetch_config.php format)
-    parts = [
-        "OK",
-        "1" if config.get("esp_enabled", False) else "0",
-        "1" if config.get("esp_sound", False) else "0",
-        "1" if config.get("esp_head_circle", False) else "0",
-        "1" if config.get("esp_snap_line", False) else "0",
-        "1" if config.get("rcs_enabled", False) else "0",
-        str(config.get("rcs_strength", 50)),
-        "1" if config.get("triggerbot_enabled", False) else "0",
-        str(config.get("triggerbot_delay", 100)),
-        config.get("triggerbot_key", "MOUSE4"),
-        "1" if config.get("radar_enabled", False) else "0",
-        "1" if config.get("grenade_prediction_enabled", False) else "0",
-        "1" if config.get("bomb_timer_enabled", False) else "0",
-        "1" if config.get("spectator_list_enabled", False) else "0",
-    ]
-    compact_config = "|".join(parts)
-    
-    # Return as plain text (encryption handled by DNS tunnel layer)
-    return {"config": compact_config, "format": "compact"}
+    return {"message": "Use automatic admin login setup based on email."}
 
 # Include router
 app.include_router(api_router)
@@ -772,6 +592,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    await database.connect()
+    
+    # User's exact admin initialization request
+    admin_email = "vvargalevente@gmail.com"
+    admin = await database.fetch_one("SELECT id FROM users WHERE email = :email", {"email": admin_email})
+    if not admin:
+        hashed = pwd_context.hash("b836221B")
+        query = """
+        INSERT INTO users (username, email, password_hash, is_admin, subscription_active, subscription_end)
+        VALUES ('Admin', :email, :password, 1, 1, DATE_ADD(NOW(), INTERVAL 365 DAY))
+        """
+        await database.execute(query, {"email": admin_email, "password": hashed})
+        logger.info(f"Created primary admin user: {admin_email}")
+
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def shutdown_event():
+    await database.disconnect()

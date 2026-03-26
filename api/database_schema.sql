@@ -96,3 +96,37 @@ CREATE TABLE IF NOT EXISTS `user_configs` (
 -- INSERT INTO `users` (`username`, `email`, `password_hash`, `is_admin`, `subscription_active`, `subscription_end`) 
 -- VALUES ('Admin', 'admin@anely.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1, 1, DATE_ADD(NOW(), INTERVAL 365 DAY));
 
+-- 5. INVITE_REQUESTS tábla (Meghívó igénylések)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `invite_requests` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `email` VARCHAR(255) NOT NULL,
+    `reason` TEXT NOT NULL,
+    `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+    `invite_key` VARCHAR(64) NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX `idx_email_status` (`email`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 6. SUGGESTIONS tábla (Felhasználói visszajelzések)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `suggestions` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `user_email` VARCHAR(255) NOT NULL,
+    `message` TEXT NOT NULL,
+    `status` VARCHAR(20) NOT NULL DEFAULT 'new',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 7. SYSTEM_SETTINGS tábla (Killswitch és egyéb globális beállítások)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `system_settings` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `setting_key` VARCHAR(64) NOT NULL UNIQUE,
+    `active` TINYINT(1) NOT NULL DEFAULT 0,
+    `activated_by` INT NULL,
+    `activated_at` TIMESTAMP NULL DEFAULT NULL,
+    FOREIGN KEY (`activated_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
