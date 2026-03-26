@@ -556,6 +556,12 @@ async def generate_new_invite_key(admin: dict = Depends(get_admin_user)):
         created_at=datetime.now(timezone.utc).isoformat()
     )
 
+@api_router.get("/admin/killswitch/status")
+async def get_killswitch_status(admin: dict = Depends(get_admin_user)):
+    killswitch = await database.fetch_one("SELECT active FROM system_settings WHERE setting_key = 'killswitch'")
+    is_active = bool(killswitch["active"]) if killswitch else False
+    return {"active": is_active}
+
 @api_router.post("/admin/killswitch/activate")
 async def activate_killswitch(admin: dict = Depends(get_admin_user)):
     query = """
