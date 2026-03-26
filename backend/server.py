@@ -106,7 +106,7 @@ class UserConfigCreate(BaseModel):
     radar_enabled: bool = False
     radar_color: str = "#00FF00"
     grenade_prediction_enabled: bool = False
-    grenade_prediction_color: "#FF8800"
+    grenade_prediction_color: str = "#FF8800"
     bomb_timer_enabled: bool = False
     bomb_timer_color: str = "#FF0000"
     spectator_list_enabled: bool = False
