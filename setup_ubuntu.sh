@@ -25,6 +25,22 @@ systemctl disable apache2 2>/dev/null
 apt-get remove -y apache2 apache2-utils apache2-bin apache2.2-common 2>/dev/null
 apt-get autoremove -y
 
+# OOM (Out Of Memory) védelem 1GB RAM-os VPS-eknek: 2GB Swap Fájl létrehozása
+echo "💾 [0.5/6] Swap (virtuális memória) ellenőrzése és létrehozása a kifagyások ellen..."
+if [ $(swapon -s | wc -l) -eq 0 ]; then
+    echo "  -> Nincs Swap, létrehozok egy 2GB-os Swap fájlt, hogy ne fagyjon ki a build!"
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+    # Kisebb "swappiness", hogy a rendszer inkább a fizikait egye
+    sysctl vm.swappiness=10
+    echo 'vm.swappiness=10' | tee -a /etc/sysctl.conf
+else
+    echo "  -> Swap fájl már létezik, folytatás..."
+fi
+
 # 1. Rendszer frissítése és alapvető csomagok telepítése
 echo "📦 [1/6] Rendszer frissítése és csomagok letöltése (Nginx, MySQL, PHP, Python, Node.js)..."
 apt-get update -y
